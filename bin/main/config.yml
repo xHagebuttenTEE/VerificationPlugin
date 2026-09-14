@@ -1,0 +1,18 @@
+database:
+  host: "127.0.0.1"
+  port: 3306
+  name: "ÄNDERN"
+  user: "ÄNDERN"
+  password: "ÄNDERN"
+  table: "verification_system"
+  pool:
+    maxPoolSize: 10
+    minIdle: 2
+    connectionTimeout: 30000
+
+roles:
+  default: "bettler"
+  verified: "i"
+
+display:
+  verifiedRole: "I"

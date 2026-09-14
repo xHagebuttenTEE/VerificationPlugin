@@ -1,0 +1,23 @@
+name: VerificationPlugin
+version: '${version}'
+main: de.hage.verification.VerificationPlugin
+api-version: '1.21'
+depend:
+  - Vault
+
+commands:
+  verification:
+    description: Verifiziert Spieler und zeigt Verifizierungsinformationen
+    usage: /verification <new|info|history> <Spieler>
+    aliases: [verify]
+
+permissions:
+  verification.new:
+    description: Darf Spieler verifizieren
+    default: op
+  verification.info:
+    description: Darf Verifizierungsinformationen anzeigen
+    default: op
+  verification.history:
+    description: Darf die Verifizierungs-Historie anzeigen
+    default: op
