@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'de.hage'
-version = '0.9.3'
+version = project.findProperty('version') ?: '0.9.3'
 
 repositories {
     mavenCentral()
@@ -52,6 +52,7 @@ tasks.named('test') {
 
 shadowJar {
     archiveClassifier.set('')
+    archiveBaseName.set('VerificationPlugin')
     exclude 'META-INF/*.DSA', 'META-INF/*.SF', 'META-INF/*.RSA'
 }
 

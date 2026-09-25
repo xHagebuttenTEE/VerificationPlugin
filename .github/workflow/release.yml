@@ -1,15 +1,22 @@
-name: Auto Release
+name: Build and Release
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
+
+env:
+  PLUGIN_FILE_NAME: VerificationPlugin
+  BUILD_TASK: shadowJar
+  JAR_PATH: build/libs/*.jar
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  build:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
 
     steps:
@@ -17,57 +24,68 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Read current version from build.gradle
-        id: get_version
+      - name: Configure git
         run: |
-          CURRENT_VERSION=$(grep -oP "version = '\K[0-9]+\.[0-9]+\.[0-9]+" build.gradle)
-          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Increment patch version
-        id: bump_version
+      - name: Bump patch version
+        id: bump
         run: |
-          IFS='.' read -r major minor patch <<< "${{ steps.get_version.outputs.current_version }}"
-          NEW_PATCH=$((patch + 1))
-          NEW_VERSION="$major.$minor.$NEW_PATCH"
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          set -e
+          CURRENT=$(grep -E '^version=' gradle.properties | cut -d'=' -f2 | tr -d '[:space:]')
+          if [ -z "$CURRENT" ]; then
+            echo "FEHLER: Keine 'version=' Zeile in gradle.properties gefunden"
+            exit 1
+          fi
 
-      - name: Update version in build.gradle
+          MAJOR=$(echo "$CURRENT" | cut -d'.' -f1)
+          MINOR=$(echo "$CURRENT" | cut -d'.' -f2)
+          PATCH=$(echo "$CURRENT" | cut -d'.' -f3)
+          if [ -z "$PATCH" ]; then PATCH=0; fi
+
+          NEW="$MAJOR.$MINOR.$((PATCH + 1))"
+          echo "Alte Version: $CURRENT"
+          echo "Neue Version: $NEW"
+
+          sed -i "s/^version=.*/version=$NEW/" gradle.properties
+
+          echo "NEW_VERSION=$NEW" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push version bump
         run: |
-          sed -i "s/version = '${{ steps.get_version.outputs.current_version }}'/version = '${{ steps.bump_version.outputs.new_version }}'/" build.gradle
+          git add gradle.properties
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.NEW_VERSION }} [skip ci]"
+          git push origin main
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
           java-version: '21'
+          distribution: 'temurin'
+          cache: 'gradle'
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
       - name: Build with Gradle
-        run: ./gradlew clean build
+        run: ./gradlew ${{ env.BUILD_TASK }} --no-daemon
 
-      - name: Commit and push version bump
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add build.gradle
-          git commit -m "chore: bump version to ${{ steps.bump_version.outputs.new_version }}"
-          git push
-
-      - name: Create Git tag
-        run: |
-          git tag "v${{ steps.bump_version.outputs.new_version }}"
-          git push origin "v${{ steps.bump_version.outputs.new_version }}"
+      - name: Upload JAR as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PLUGIN_FILE_NAME }}-${{ steps.bump.outputs.NEW_VERSION }}
+          path: ${{ env.JAR_PATH }}
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v1
         with:
-          tag_name: "v${{ steps.bump_version.outputs.new_version }}"
-          name: "Release v${{ steps.bump_version.outputs.new_version }}"
+          name: ${{ env.PLUGIN_FILE_NAME }} ${{ steps.bump.outputs.NEW_VERSION }}
+          tag_name: v${{ steps.bump.outputs.NEW_VERSION }}
+          draft: false
+          prerelease: false
           generate_release_notes: true
-          files: build/libs/*.jar
+          files: ${{ env.JAR_PATH }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
