@@ -10,7 +10,7 @@ softdepend:
 commands:
   verification:
     description: Verifiziert Spieler und zeigt Verifizierungsinformationen
-    usage: /verification <new|info|history|ui|resetmessages> [Spieler]
+    usage: /verification <new|info|history|ui|resetmessages|resetconfig|resetdatabase> [Spieler]
     aliases: [verify]
 
 permissions:
@@ -31,4 +31,10 @@ permissions:
     default: op
   verification.resetmessages:
     description: Darf die messages.yml mit der JAR-Version überschreiben
+    default: op
+  verification.resetconfig:
+    description: Darf die config.yml mit der JAR-Version überschreiben
+    default: op
+  verification.resetdatabase:
+    description: Darf die database.yml mit der JAR-Version überschreiben
     default: op

@@ -50,9 +50,16 @@ public final class VerificationCommand implements CommandExecutor, TabCompleter 
             uiCommand.execute(sender);
             return true;
         }
-
         if (sub.equals("resetmessages")) {
             handleResetMessages(sender);
+            return true;
+        }
+        if (sub.equals("resetconfig")) {
+            handleResetConfig(sender);
+            return true;
+        }
+        if (sub.equals("resetdatabase")) {
+            handleResetDatabase(sender);
             return true;
         }
 
@@ -79,6 +86,8 @@ public final class VerificationCommand implements CommandExecutor, TabCompleter 
             if (sender.hasPermission("verification.history")) available.add("history");
             if (sender.hasPermission("verification.ui")) available.add("ui");
             if (sender.hasPermission("verification.resetmessages")) available.add("resetmessages");
+            if (sender.hasPermission("verification.resetconfig")) available.add("resetconfig");
+            if (sender.hasPermission("verification.resetdatabase")) available.add("resetdatabase");
             return filterByPrefix(available, args[0]);
         }
 
@@ -97,9 +106,7 @@ public final class VerificationCommand implements CommandExecutor, TabCompleter 
     }
 
     private List<String> filterByPrefix(List<String> list, String prefix) {
-        if (prefix == null || prefix.isEmpty()) {
-            return list;
-        }
+        if (prefix == null || prefix.isEmpty()) return list;
         String lower = prefix.toLowerCase();
         return list.stream()
                 .filter(s -> s.toLowerCase().startsWith(lower))
@@ -111,31 +118,65 @@ public final class VerificationCommand implements CommandExecutor, TabCompleter 
             sender.sendMessage(plugin.getMessageService().getMessage("command.noPermission"));
             return;
         }
+        resetFile(sender, "messages.yml", "reset.success", "reset.failure", false);
+    }
 
-        File messagesFile = new File(plugin.getDataFolder(), "messages.yml");
-        File backupFile = new File(plugin.getDataFolder(), "messages.yml.bak");
+    private void handleResetConfig(CommandSender sender) {
+        if (!sender.hasPermission("verification.resetconfig")) {
+            sender.sendMessage(plugin.getMessageService().getMessage("command.noPermission"));
+            return;
+        }
+        resetFile(sender, "config.yml", "reset.configSuccess", "reset.configFailure", true);
+    }
+
+    private void handleResetDatabase(CommandSender sender) {
+        if (!sender.hasPermission("verification.resetdatabase")) {
+            sender.sendMessage(plugin.getMessageService().getMessage("command.noPermission"));
+            return;
+        }
+        resetFile(sender, "database.yml", "reset.databaseSuccess", "reset.databaseFailure", false);
+    }
+
+    private void resetFile(CommandSender sender, String filename, String successKey,
+                           String failureKey, boolean reloadConfigAfter) {
+        File file = new File(plugin.getDataFolder(), filename);
+        File backup = new File(plugin.getDataFolder(), filename + ".bak");
 
         try {
-            if (messagesFile.exists()) {
-                Files.copy(messagesFile.toPath(), backupFile.toPath(),
-                        StandardCopyOption.REPLACE_EXISTING);
+            if (file.exists()) {
+                Files.copy(file.toPath(), backup.toPath(), StandardCopyOption.REPLACE_EXISTING);
             }
-            if (messagesFile.exists() && !messagesFile.delete()) {
-                throw new IOException("Konnte messages.yml nicht löschen.");
-            }
-            plugin.saveResource("messages.yml", true);
-
-            if (!messagesFile.exists()) {
-                throw new IOException("messages.yml wurde nicht neu erstellt.");
+            if (file.exists() && !file.delete()) {
+                throw new IOException("Konnte " + filename + " nicht löschen.");
             }
 
-            plugin.getMessageService().reload();
+            if (reloadConfigAfter) {
+                plugin.saveDefaultConfig();
+            } else {
+                plugin.saveResource(filename, true);
+            }
 
-            sender.sendMessage(plugin.getMessageService().getMessage("reset.success"));
-            sender.sendMessage(plugin.getMessageService().getMessage("reset.backupCreated"));
+            if (!file.exists()) {
+                throw new IOException(filename + " wurde nicht neu erstellt.");
+            }
+
+            if (filename.equals("messages.yml")) {
+                plugin.getMessageService().reload();
+            }
+            if (filename.equals("config.yml")) {
+                plugin.reloadConfig();
+            }
+
+            sender.sendMessage(plugin.getMessageService().getMessage(successKey));
+            sender.sendMessage(plugin.getMessageService().getMessage("reset.backupCreated",
+                    "file", backup.getName()));
+
+            if (!filename.equals("messages.yml")) {
+                sender.sendMessage(plugin.getMessageService().getMessage("reset.restartRequired"));
+            }
         } catch (IOException e) {
-            plugin.getLogger().warning("Fehler beim Zurücksetzen der messages.yml: " + e.getMessage());
-            sender.sendMessage(plugin.getMessageService().getMessage("reset.failure"));
+            plugin.getLogger().warning("Fehler beim Zurücksetzen der " + filename + ": " + e.getMessage());
+            sender.sendMessage(plugin.getMessageService().getMessage(failureKey));
         }
     }
 }

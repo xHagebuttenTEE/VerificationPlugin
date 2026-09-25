@@ -1,7 +1,7 @@
 prefix: "§8[§aVerification§8] §r"
 
 command:
-  usage: "§cVerwendung: /verification <new|info|history|ui|resetmessages> [Spieler]"
+  usage: "§cVerwendung: /verification <new|info|history|ui|resetmessages|resetconfig|resetdatabase> [Spieler]"
   noPermission: "§cDafür hast du keine Berechtigung."
   playerNotFound: "§cDieser Spieler wurde nicht gefunden."
   alreadyVerified: "§cDieser Spieler ist bereits verifiziert."
@@ -49,4 +49,9 @@ health:
 reset:
   success: "§aDie messages.yml wurde erfolgreich aus dem Plugin-Archiv wiederhergestellt und neu geladen."
   failure: "§cDie messages.yml konnte nicht wiederhergestellt werden. Prüfe die Konsole."
-  backupCreated: "§7Eine Sicherungskopie wurde unter §fmessages.yml.bak §7erstellt."
+  configSuccess: "§aDie config.yml wurde erfolgreich aus dem Plugin-Archiv wiederhergestellt und neu geladen."
+  configFailure: "§cDie config.yml konnte nicht wiederhergestellt werden. Prüfe die Konsole."
+  databaseSuccess: "§aDie database.yml wurde erfolgreich aus dem Plugin-Archiv wiederhergestellt."
+  databaseFailure: "§cDie database.yml konnte nicht wiederhergestellt werden. Prüfe die Konsole."
+  restartRequired: "§eEin Server-Neustart ist erforderlich, damit die Änderungen aktiv werden."
+  backupCreated: "§7Eine Sicherungskopie wurde unter §f{file} §7erstellt."

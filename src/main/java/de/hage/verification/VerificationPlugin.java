@@ -16,6 +16,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
 import de.hage.verification.command.VerificationCommand;
+import de.hage.verification.config.DatabaseConfig;
 import de.hage.verification.database.DatabaseType;
 import de.hage.verification.database.repository.VerificationHistoryRepository;
 import de.hage.verification.database.repository.VerificationProgressRepository;
@@ -53,6 +54,7 @@ public final class VerificationPlugin extends JavaPlugin {
     private StatisticsService statisticsService;
     private ProgressService progressService;
     private HealthCheckTask healthCheckTask;
+    private DatabaseConfig databaseConfig;
 
     private String defaultGroup;
     private String verifiedGroup;
@@ -71,6 +73,8 @@ public final class VerificationPlugin extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
         reloadConfig();
+
+        this.databaseConfig = new DatabaseConfig(this);
 
         if (!setupVault()) {
             getLogger().severe("Vault konnte nicht eingerichtet werden. Plugin wird deaktiviert.");
@@ -208,22 +212,16 @@ public final class VerificationPlugin extends JavaPlugin {
     }
 
     private boolean setupDatabase() {
-        tableName = getConfig().getString("database.table", "verification_system");
+        tableName = databaseConfig.getTable();
 
-        String typeStr = getConfig().getString("database.type", "auto");
-        if (typeStr == null) typeStr = "auto";
-        typeStr = typeStr.toLowerCase().trim();
+        String typeStr = databaseConfig.getType();
 
         if (typeStr.equals("sqlite")) {
             databaseType = DatabaseType.SQLITE;
         } else if (typeStr.equals("mariadb") || typeStr.equals("mysql")) {
             databaseType = DatabaseType.MARIADB;
         } else {
-            String name = getConfig().getString("database.name", "");
-            String user = getConfig().getString("database.user", "");
-            boolean hasCredentials = name != null && !name.isEmpty()
-                    && user != null && !user.isEmpty();
-            databaseType = hasCredentials ? DatabaseType.MARIADB : DatabaseType.SQLITE;
+            databaseType = databaseConfig.hasCredentials() ? DatabaseType.MARIADB : DatabaseType.SQLITE;
         }
 
         if (databaseType == DatabaseType.SQLITE) {
@@ -233,7 +231,7 @@ public final class VerificationPlugin extends JavaPlugin {
     }
 
     private boolean setupSqlite() {
-        String filename = getConfig().getString("database.sqlite.file", "verification.db");
+        String filename = databaseConfig.getSqliteFile();
         if (filename == null || filename.isEmpty()) filename = "verification.db";
         File dbFile = new File(getDataFolder(), filename);
         if (!getDataFolder().exists() && !getDataFolder().mkdirs()) {
@@ -263,19 +261,19 @@ public final class VerificationPlugin extends JavaPlugin {
     }
 
     private boolean setupMariaDb() {
-        String host = getConfig().getString("database.host");
-        int port = getConfig().getInt("database.port");
-        String database = getConfig().getString("database.name");
-        String user = getConfig().getString("database.user");
-        String password = getConfig().getString("database.password");
+        String host = databaseConfig.getHost();
+        int port = databaseConfig.getPort();
+        String database = databaseConfig.getName();
+        String user = databaseConfig.getUser();
+        String password = databaseConfig.getPassword();
 
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl("jdbc:mariadb://" + host + ":" + port + "/" + database);
         config.setUsername(user);
         config.setPassword(password);
-        config.setMaximumPoolSize(getConfig().getInt("database.pool.maxPoolSize", 10));
-        config.setMinimumIdle(getConfig().getInt("database.pool.minIdle", 2));
-        config.setConnectionTimeout(getConfig().getLong("database.pool.connectionTimeout", 30000));
+        config.setMaximumPoolSize(databaseConfig.getMaxPoolSize());
+        config.setMinimumIdle(databaseConfig.getMinIdle());
+        config.setConnectionTimeout(databaseConfig.getConnectionTimeout());
         config.setDriverClassName("org.mariadb.jdbc.Driver");
 
         try {
@@ -487,6 +485,7 @@ public final class VerificationPlugin extends JavaPlugin {
     public Permission getPermission() { return permission; }
     public String getTableName() { return tableName; }
     public DatabaseType getDatabaseType() { return databaseType; }
+    public DatabaseConfig getDatabaseConfig() { return databaseConfig; }
     public VerificationService getVerificationService() { return verificationService; }
     public MessageService getMessageService() { return messageService; }
     public StatisticsService getStatisticsService() { return statisticsService; }

@@ -1,0 +1,13 @@
+type: "auto"
+host: "127.0.0.1"
+port: 3306
+name: ""
+user: ""
+password: ""
+sqlite:
+  file: "verification.db"
+table: "verification_system"
+pool:
+  maxPoolSize: 10
+  minIdle: 2
+  connectionTimeout: 30000
