@@ -10,10 +10,12 @@ import java.util.logging.Level;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import de.hage.verification.VerificationPlugin;
+import de.hage.verification.database.model.VerificationEntry;
 import de.hage.verification.database.model.VerificationHistoryEntry;
 import de.hage.verification.database.repository.VerificationHistoryRepository;
 import de.hage.verification.database.repository.VerificationRepository;
 import de.hage.verification.util.PlayerUtil;
+import de.hage.verification.util.SimpleCache;
 
 public final class VerificationService {
 
@@ -29,6 +31,8 @@ public final class VerificationService {
     private final String verifiedGroup;
     private final String verifiedDisplayName;
     private final boolean historyEnabled;
+    private final SimpleCache<UUID, VerificationInfo> infoCache;
+    private final SimpleCache<UUID, String> rankCache;
 
     public VerificationService(VerificationPlugin plugin,
                                VerificationRepository repository,
@@ -37,7 +41,8 @@ public final class VerificationService {
                                String defaultGroup,
                                String verifiedGroup,
                                String verifiedDisplayName,
-                               boolean historyEnabled) {
+                               boolean historyEnabled,
+                               long cacheTtlSeconds) {
         this.plugin = plugin;
         this.repository = repository;
         this.historyRepository = historyRepository;
@@ -46,6 +51,9 @@ public final class VerificationService {
         this.verifiedGroup = verifiedGroup;
         this.verifiedDisplayName = verifiedDisplayName;
         this.historyEnabled = historyEnabled;
+        long ttl = Math.max(0, cacheTtlSeconds) * 1000L;
+        this.infoCache = ttl > 0 ? new SimpleCache<>(ttl) : null;
+        this.rankCache = ttl > 0 ? new SimpleCache<>(ttl) : null;
     }
 
     public CompletableFuture<Boolean> verifyPlayer(UUID playerUUID, UUID verificatorUUID) {
@@ -60,7 +68,11 @@ public final class VerificationService {
                         return CompletableFuture.completedFuture(false);
                     }
                     return applyLuckPermsChange(player, playerUUID, verificatorUUID)
-                            .thenApplyAsync(v -> true);
+                            .thenApplyAsync(v -> {
+                                if (infoCache != null) infoCache.invalidate(playerUUID);
+                                if (rankCache != null) rankCache.invalidate(playerUUID);
+                                return true;
+                            });
                 });
         });
     }
@@ -98,6 +110,12 @@ public final class VerificationService {
     }
 
     public CompletableFuture<VerificationInfo> getVerificationInfo(UUID playerUUID) {
+        if (infoCache != null) {
+            var cached = infoCache.get(playerUUID);
+            if (cached.isPresent()) {
+                return CompletableFuture.completedFuture(cached.get());
+            }
+        }
         return repository.findByPlayer(playerUUID).thenComposeAsync(entry -> {
             if (entry == null) {
                 return CompletableFuture.completedFuture(
@@ -115,25 +133,57 @@ public final class VerificationService {
                     : null;
 
             if (!historyEnabled) {
-                return CompletableFuture.completedFuture(
-                        new VerificationInfo(true, playerName, verificatorName,
-                                formattedTime, null, null));
+                VerificationInfo info = new VerificationInfo(true, playerName, verificatorName,
+                        formattedTime, null, null);
+                if (infoCache != null) infoCache.put(playerUUID, info);
+                return CompletableFuture.completedFuture(info);
             }
             int limit = plugin.getConfig().getInt("history.maxEntriesInInfo", 3);
             if (limit <= 0) {
-                return CompletableFuture.completedFuture(
-                        new VerificationInfo(true, playerName, verificatorName,
-                                formattedTime, null, null));
+                VerificationInfo info = new VerificationInfo(true, playerName, verificatorName,
+                        formattedTime, null, null);
+                if (infoCache != null) infoCache.put(playerUUID, info);
+                return CompletableFuture.completedFuture(info);
             }
             return historyRepository.findRecent(playerUUID, limit)
-                    .thenApplyAsync(history -> new VerificationInfo(true, playerName,
-                            verificatorName, formattedTime, history, limit));
+                    .thenApplyAsync(history -> {
+                        VerificationInfo info = new VerificationInfo(true, playerName,
+                                verificatorName, formattedTime, history, limit);
+                        if (infoCache != null) infoCache.put(playerUUID, info);
+                        return info;
+                    });
         });
     }
 
     public CompletableFuture<List<VerificationHistoryEntry>> getHistory(UUID playerUUID) {
         int limit = plugin.getConfig().getInt("history.maxEntriesInHistoryCommand", 10);
         return historyRepository.findRecent(playerUUID, limit);
+    }
+
+    public CompletableFuture<List<VerificationEntry>> getPlayersForUI(UUID viewerUUID, boolean showAll) {
+        if (showAll) {
+            return repository.findAll();
+        }
+        return repository.findByVerificator(viewerUUID);
+    }
+
+    public String getRankOf(UUID playerUUID) {
+        if (rankCache != null) {
+            var cached = rankCache.get(playerUUID);
+            if (cached.isPresent()) {
+                return cached.get();
+            }
+        }
+        try {
+            OfflinePlayer player = Bukkit.getOfflinePlayer(playerUUID);
+            String rank = vaultService.getPrimaryGroup(player);
+            if (rank != null && rankCache != null) {
+                rankCache.put(playerUUID, rank);
+            }
+            return rank;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public String formatTime(Timestamp timestamp) {
@@ -168,28 +218,11 @@ public final class VerificationService {
             this.historyLimit = historyLimit;
         }
 
-        public boolean isVerified() {
-            return verified;
-        }
-
-        public String getPlayerName() {
-            return playerName;
-        }
-
-        public String getVerificatorName() {
-            return verificatorName;
-        }
-
-        public String getFormattedTime() {
-            return formattedTime;
-        }
-
-        public List<VerificationHistoryEntry> getHistory() {
-            return history;
-        }
-
-        public Integer getHistoryLimit() {
-            return historyLimit;
-        }
+        public boolean isVerified() { return verified; }
+        public String getPlayerName() { return playerName; }
+        public String getVerificatorName() { return verificatorName; }
+        public String getFormattedTime() { return formattedTime; }
+        public List<VerificationHistoryEntry> getHistory() { return history; }
+        public Integer getHistoryLimit() { return historyLimit; }
     }
 }

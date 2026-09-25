@@ -1,6 +1,5 @@
 package de.hage.verification.command.subcommand;
 
-import java.util.List;
 import java.util.UUID;
 import org.bukkit.command.CommandSender;
 import de.hage.verification.VerificationPlugin;

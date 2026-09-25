@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'de.hage'
-version = '0.4.3'
+version = '0.9.3'
 
 repositories {
     mavenCentral()
@@ -16,17 +16,26 @@ repositories {
         name = 'jitpack'
         url = 'https://jitpack.io'
     }
+    maven {
+        name = 'luckperms'
+        url = 'https://repo.luckperms.net/'
+    }
 }
 
 dependencies {
     compileOnly 'io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT'
     compileOnly 'com.github.MilkBowl:VaultAPI:1.7.1'
+    compileOnly 'net.luckperms:api:5.4'
 
     implementation 'com.zaxxer:HikariCP:5.1.0'
     implementation 'org.mariadb.jdbc:mariadb-java-client:3.3.2'
+    implementation 'org.xerial:sqlite-jdbc:3.46.0.0'
 
     compileOnly 'org.projectlombok:lombok:1.18.30'
     annotationProcessor 'org.projectlombok:lombok:1.18.30'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 java {
@@ -35,6 +44,10 @@ java {
 
 tasks.withType(JavaCompile) {
     options.encoding = 'UTF-8'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
 }
 
 shadowJar {

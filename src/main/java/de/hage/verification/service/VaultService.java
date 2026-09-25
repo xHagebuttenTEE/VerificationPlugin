@@ -35,11 +35,11 @@ public final class VaultService {
         return Arrays.asList(permission.getGroups()).contains(group);
     }
 
-    public boolean hasGroup(OfflinePlayer player, String group, boolean checkPrimary) {
-        if (!checkPrimary) {
-            return hasGroup(player, group);
+    public String getPrimaryGroup(OfflinePlayer player) {
+        try {
+            return permission.getPrimaryGroup(null, player);
+        } catch (Exception e) {
+            return null;
         }
-        String primary = permission.getPrimaryGroup(null, player);
-        return primary != null && primary.equals(group);
     }
 }

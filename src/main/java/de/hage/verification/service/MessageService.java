@@ -11,14 +11,15 @@ public final class MessageService {
 
     private final VerificationPlugin plugin;
     private final Map<String, String> messages = new HashMap<>();
-    private final String prefix;
+    private String prefix;
 
     public MessageService(VerificationPlugin plugin) {
         this.plugin = plugin;
-        this.prefix = loadMessages();
+        reload();
     }
 
-    private String loadMessages() {
+    public void reload() {
+        messages.clear();
         File messagesFile = new File(plugin.getDataFolder(), "messages.yml");
         if (!messagesFile.exists()) {
             plugin.saveResource("messages.yml", false);
@@ -29,7 +30,7 @@ public final class MessageService {
                 messages.put(key, config.getString(key));
             }
         }
-        return messages.getOrDefault("prefix", "§8[§aVerification§8] §r");
+        prefix = messages.getOrDefault("prefix", "§8[§aVerification§8] §r");
     }
 
     public String getMessage(String key) {
