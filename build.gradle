@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'de.hage'
-version = project.findProperty('version') ?: '0.9.3'
+version = '0.9.4'
 
 repositories {
     mavenCentral()
@@ -50,9 +50,14 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
+tasks.named('processResources') {
+    filesMatching('plugin.yml') {
+        expand(version: project.version)
+    }
+}
+
 shadowJar {
     archiveClassifier.set('')
-    archiveBaseName.set('VerificationPlugin')
     exclude 'META-INF/*.DSA', 'META-INF/*.SF', 'META-INF/*.RSA'
 }
 

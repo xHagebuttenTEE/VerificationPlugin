@@ -360,21 +360,31 @@ public final class VerificationPlugin extends JavaPlugin {
             "CREATE INDEX IF NOT EXISTS idx_progress_time ON "
                 + VerificationProgressRepository.TABLE_NAME + "(timestamp)"
         };
+
         try (Connection conn = dataSource.getConnection();
              Statement stmt = conn.createStatement()) {
             for (String sql : statements) {
                 stmt.execute(sql);
             }
-            if (!columnExists(VerificationStatisticsRepository.TABLE_NAME,
-                    VerificationStatisticsRepository.COLUMN_CUMULATIVE_EARNED)) {
-                stmt.execute("ALTER TABLE " + VerificationStatisticsRepository.TABLE_NAME
-                        + " ADD COLUMN cumulative_earned NUMERIC NOT NULL DEFAULT 0");
-            }
-            return true;
         } catch (SQLException e) {
             getLogger().log(Level.SEVERE, "Fehler beim Anlegen der SQLite-Tabellen.", e);
             return false;
         }
+
+        try (Connection conn = dataSource.getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("ALTER TABLE " + VerificationStatisticsRepository.TABLE_NAME
+                    + " ADD COLUMN cumulative_earned NUMERIC NOT NULL DEFAULT 0");
+        } catch (SQLException e) {
+            String msg = e.getMessage();
+            if (msg == null || !msg.toLowerCase().contains("duplicate column")) {
+                getLogger().log(Level.SEVERE,
+                        "Fehler beim Hinzufügen der Spalte 'cumulative_earned'.", e);
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private boolean createHistoryTable() {

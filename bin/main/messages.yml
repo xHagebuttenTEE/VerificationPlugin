@@ -1,0 +1,57 @@
+prefix: "§8[§aVerification§8] §r"
+
+command:
+  usage: "§cVerwendung: /verification <new|info|history|ui|resetmessages|resetconfig|resetdatabase> [Spieler]"
+  noPermission: "§cDafür hast du keine Berechtigung."
+  playerNotFound: "§cDieser Spieler wurde nicht gefunden."
+  alreadyVerified: "§cDieser Spieler ist bereits verifiziert."
+  success: "§aSpieler §f{player} §awurde verifiziert (§f{role}§a)."
+  dbError: "§cDie Verifizierung konnte nicht gespeichert werden."
+  dbConnectionError: "§cKeine Verbindung zur Datenbank."
+  luckPermsError: "§cDer Rollenwechsel konnte nicht durchgeführt werden. Die Verifizierung wurde zurückgerollt."
+
+info:
+  notVerified: "§eFür diesen Spieler existiert keine Verifizierung."
+  header: "§aVerifizierung von §f{player}§a:"
+  verificator: "§7Verifiziert von: §f{verificator}"
+  time: "§7Zeitpunkt: §f{time}"
+  unknownVerificator: "Unbekannt"
+  historyHeader: "§7Letzte Einträge:"
+  historyEntry: "§7[{time}] §f{actor} §7→ §f{action} §7{details}"
+
+history:
+  header: "§aHistorie für §f{player}§a:"
+  entry: "§7[{time}] §f{actor} §7→ §f{action} §7{details}"
+  noEntries: "§eKeine Einträge in der Historie."
+  tooMany: "§7(Es werden nur die letzten {count} Einträge angezeigt.)"
+
+ui:
+  title: "§8Verifizierte Spieler"
+  noPlayers: "§eDu hast noch keine Spieler verifiziert."
+  noPlayersAll: "§eEs sind keine verifizierten Spieler vorhanden."
+  prevPage: "§7Vorherige Seite"
+  nextPage: "§7Nächste Seite"
+  playtime: "§7Spielzeit: §f{value}"
+  balance: "§7Kontostand: §f{value}"
+  highestBalance: "§7Höchster Kontostand: §f{value}"
+  cumulativeEarned: "§7Insgesamt verdient: §f{value}"
+  rank: "§7Aktueller Rang: §f{rank}"
+  clickForDetails: "§aKlick für Details"
+  unknown: "Unbekannt"
+  progressHeader: "§7Letzte Fortschritte:"
+  progressEntry: "§7[{time}] §f{type} §7→ §f{key} §7{value}"
+  noProgress: "§7Noch keine Fortschritte aufgezeichnet."
+
+health:
+  ok: "§aDatenbankverbindung OK."
+  failed: "§cDatenbankverbindung fehlgeschlagen!"
+
+reset:
+  success: "§aDie messages.yml wurde erfolgreich aus dem Plugin-Archiv wiederhergestellt und neu geladen."
+  failure: "§cDie messages.yml konnte nicht wiederhergestellt werden. Prüfe die Konsole."
+  configSuccess: "§aDie config.yml wurde erfolgreich aus dem Plugin-Archiv wiederhergestellt und neu geladen."
+  configFailure: "§cDie config.yml konnte nicht wiederhergestellt werden. Prüfe die Konsole."
+  databaseSuccess: "§aDie database.yml wurde erfolgreich aus dem Plugin-Archiv wiederhergestellt."
+  databaseFailure: "§cDie database.yml konnte nicht wiederhergestellt werden. Prüfe die Konsole."
+  restartRequired: "§eEin Server-Neustart ist erforderlich, damit die Änderungen aktiv werden."
+  backupCreated: "§7Eine Sicherungskopie wurde unter §f{file} §7erstellt."
