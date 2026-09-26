@@ -9,6 +9,9 @@ command:
   dbError: "§cDie Verifizierung konnte nicht gespeichert werden."
   dbConnectionError: "§cKeine Verbindung zur Datenbank."
   luckPermsError: "§cDer Rollenwechsel konnte nicht durchgeführt werden. Die Verifizierung wurde zurückgerollt."
+  helpHeader: "§8§m----------§r §aVerification §8§m----------"
+  helpEntry: "§a/verification §f{sub} §7{description}"
+  helpFooter: "§8§m----------------------------------"
 
 info:
   notVerified: "§eFür diesen Spieler existiert keine Verifizierung."
@@ -41,6 +44,9 @@ ui:
   progressHeader: "§7Letzte Fortschritte:"
   progressEntry: "§7[{time}] §f{type} §7→ §f{key} §7{value}"
   noProgress: "§7Noch keine Fortschritte aufgezeichnet."
+
+milestone:
+  reached: "§6⚑ §e{player} §7hat den Meilenstein §f{name} §7erreicht!"
 
 health:
   ok: "§aDatenbankverbindung OK."

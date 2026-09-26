@@ -21,79 +21,140 @@ import de.hage.verification.command.subcommand.HistorySubcommand;
 import de.hage.verification.command.subcommand.InfoSubcommand;
 import de.hage.verification.command.subcommand.NewSubcommand;
 import de.hage.verification.command.subcommand.Subcommand;
-import de.hage.verification.command.subcommand.UICommand;
 
 public final class VerificationCommand implements CommandExecutor, TabCompleter {
 
     private final VerificationPlugin plugin;
     private final Map<String, Subcommand> subcommands = new HashMap<>();
-    private final UICommand uiCommand;
+    private final Map<String, String> staticDescriptions = new HashMap<>();
+    private final Map<String, String> staticPermissions = new HashMap<>();
 
     public VerificationCommand(VerificationPlugin plugin) {
         this.plugin = plugin;
         subcommands.put("new", new NewSubcommand(plugin));
         subcommands.put("info", new InfoSubcommand(plugin));
         subcommands.put("history", new HistorySubcommand(plugin));
-        this.uiCommand = new UICommand(plugin);
+
+        staticDescriptions.put("ui", "Öffnet das Verifizierungs-UI");
+        staticDescriptions.put("resetmessages", "Setzt messages.yml zurück");
+        staticDescriptions.put("resetconfig", "Setzt config.yml zurück");
+        staticDescriptions.put("resetdatabase", "Setzt database.yml zurück");
+
+        staticPermissions.put("ui", "verification.ui");
+        staticPermissions.put("resetmessages", "verification.resetmessages");
+        staticPermissions.put("resetconfig", "verification.resetconfig");
+        staticPermissions.put("resetdatabase", "verification.resetdatabase");
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (args.length < 1) {
-            sender.sendMessage(plugin.getMessageService().getMessage("command.usage"));
+            sendHelp(sender);
             return true;
         }
 
         String sub = args[0].toLowerCase();
 
+        if (sub.equals("help") || sub.equals("?")) {
+            sendHelp(sender);
+            return true;
+        }
+
         if (sub.equals("ui")) {
-            uiCommand.execute(sender);
+            if (!sender.hasPermission("verification.ui")) {
+                sender.sendMessage(plugin.getMessageService().getMessage("command.noPermission"));
+                return true;
+            }
+            plugin.getUICommand().execute(sender);
             return true;
         }
+
         if (sub.equals("resetmessages")) {
-            handleResetMessages(sender);
+            if (!sender.hasPermission("verification.resetmessages")) {
+                sender.sendMessage(plugin.getMessageService().getMessage("command.noPermission"));
+                return true;
+            }
+            resetFile(sender, "messages.yml", "reset.success", "reset.failure", false);
             return true;
         }
+
         if (sub.equals("resetconfig")) {
-            handleResetConfig(sender);
+            if (!sender.hasPermission("verification.resetconfig")) {
+                sender.sendMessage(plugin.getMessageService().getMessage("command.noPermission"));
+                return true;
+            }
+            resetFile(sender, "config.yml", "reset.configSuccess", "reset.configFailure", true);
             return true;
         }
+
         if (sub.equals("resetdatabase")) {
-            handleResetDatabase(sender);
+            if (!sender.hasPermission("verification.resetdatabase")) {
+                sender.sendMessage(plugin.getMessageService().getMessage("command.noPermission"));
+                return true;
+            }
+            resetFile(sender, "database.yml", "reset.databaseSuccess", "reset.databaseFailure", false);
             return true;
         }
 
         if (args.length < 2) {
-            sender.sendMessage(plugin.getMessageService().getMessage("command.usage"));
+            sendHelp(sender);
             return true;
         }
 
         Subcommand subcommand = subcommands.get(sub);
         if (subcommand == null) {
-            sender.sendMessage(plugin.getMessageService().getMessage("command.usage"));
+            sendHelp(sender);
             return true;
         }
         subcommand.execute(sender, args[1]);
         return true;
     }
 
+    private void sendHelp(CommandSender sender) {
+        sender.sendMessage(plugin.getMessageService().getMessage("command.helpHeader"));
+        for (Map.Entry<String, Subcommand> entry : subcommands.entrySet()) {
+            Subcommand sub = entry.getValue();
+            if (sender.hasPermission(sub.getPermission())) {
+                sender.sendMessage(plugin.getMessageService().getMessage("command.helpEntry",
+                        "sub", entry.getKey(),
+                        "description", sub.getDescription()));
+            }
+        }
+        for (Map.Entry<String, String> entry : staticDescriptions.entrySet()) {
+            String perm = staticPermissions.get(entry.getKey());
+            if (sender.hasPermission(perm)) {
+                sender.sendMessage(plugin.getMessageService().getMessage("command.helpEntry",
+                        "sub", entry.getKey(),
+                        "description", entry.getValue()));
+            }
+        }
+        sender.sendMessage(plugin.getMessageService().getMessage("command.helpFooter"));
+    }
+
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
             List<String> available = new ArrayList<>();
-            if (sender.hasPermission("verification.new")) available.add("new");
-            if (sender.hasPermission("verification.info")) available.add("info");
-            if (sender.hasPermission("verification.history")) available.add("history");
-            if (sender.hasPermission("verification.ui")) available.add("ui");
-            if (sender.hasPermission("verification.resetmessages")) available.add("resetmessages");
-            if (sender.hasPermission("verification.resetconfig")) available.add("resetconfig");
-            if (sender.hasPermission("verification.resetdatabase")) available.add("resetdatabase");
+            for (Map.Entry<String, Subcommand> entry : subcommands.entrySet()) {
+                if (sender.hasPermission(entry.getValue().getPermission())) {
+                    available.add(entry.getKey());
+                }
+            }
+            for (Map.Entry<String, String> entry : staticPermissions.entrySet()) {
+                if (sender.hasPermission(entry.getValue())) {
+                    available.add(entry.getKey());
+                }
+            }
             return filterByPrefix(available, args[0]);
         }
 
         if (args.length == 2) {
             String sub = args[0].toLowerCase();
             if (sub.equals("new") || sub.equals("info") || sub.equals("history")) {
+                Subcommand subcommand = subcommands.get(sub);
+                if (subcommand == null || !sender.hasPermission(subcommand.getPermission())) {
+                    return Collections.emptyList();
+                }
                 List<String> names = Bukkit.getOnlinePlayers().stream()
                         .map(Player::getName)
                         .collect(Collectors.toList());
@@ -111,30 +172,6 @@ public final class VerificationCommand implements CommandExecutor, TabCompleter 
         return list.stream()
                 .filter(s -> s.toLowerCase().startsWith(lower))
                 .collect(Collectors.toList());
-    }
-
-    private void handleResetMessages(CommandSender sender) {
-        if (!sender.hasPermission("verification.resetmessages")) {
-            sender.sendMessage(plugin.getMessageService().getMessage("command.noPermission"));
-            return;
-        }
-        resetFile(sender, "messages.yml", "reset.success", "reset.failure", false);
-    }
-
-    private void handleResetConfig(CommandSender sender) {
-        if (!sender.hasPermission("verification.resetconfig")) {
-            sender.sendMessage(plugin.getMessageService().getMessage("command.noPermission"));
-            return;
-        }
-        resetFile(sender, "config.yml", "reset.configSuccess", "reset.configFailure", true);
-    }
-
-    private void handleResetDatabase(CommandSender sender) {
-        if (!sender.hasPermission("verification.resetdatabase")) {
-            sender.sendMessage(plugin.getMessageService().getMessage("command.noPermission"));
-            return;
-        }
-        resetFile(sender, "database.yml", "reset.databaseSuccess", "reset.databaseFailure", false);
     }
 
     private void resetFile(CommandSender sender, String filename, String successKey,

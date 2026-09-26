@@ -70,4 +70,14 @@ public final class InfoSubcommand implements Subcommand {
             return null;
         });
     }
+
+    @Override
+    public String getDescription() {
+        return "Zeigt Verifizierungsinfos zu einem Spieler";
+    }
+
+    @Override
+    public String getPermission() {
+        return "verification.info";
+    }
 }

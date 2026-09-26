@@ -1,5 +1,5 @@
 roles:
-  default: "bettler"
+  default: "default"
   verified: "i"
 
 display:
@@ -15,6 +15,12 @@ progress:
   track-advancements: true
   track-rank-changes: true
   maxEntriesInDetails: 10
+
+milestones:
+  enabled: true
+  check-interval-seconds: 60
+  broadcast-on-reach: true
+  definitions: []
 
 statistics:
   enabled: true

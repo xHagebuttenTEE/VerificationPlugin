@@ -87,6 +87,24 @@ public final class VerificationProgressRepository {
         });
     }
 
+    public CompletableFuture<Boolean> existsByTypeAndKey(UUID playerUUID, String eventType, String eventKey) {
+        return asyncExecutor.supplyAsync(() -> {
+            String sql = "SELECT 1 FROM " + TABLE_NAME
+                    + " WHERE player_uuid = ? AND event_type = ? AND event_key = ?";
+            try (Connection conn = dataSource.getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setString(1, playerUUID.toString());
+                stmt.setString(2, eventType);
+                stmt.setString(3, eventKey);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    return rs.next();
+                }
+            } catch (SQLException e) {
+                throw new RuntimeException("Fehler beim Prüfen des Fortschritts", e);
+            }
+        });
+    }
+
     private VerificationProgressEntry mapRow(ResultSet rs) throws SQLException {
         long id = rs.getLong("id");
         String uuidStr = rs.getString("player_uuid");

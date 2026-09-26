@@ -16,6 +16,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
 import de.hage.verification.command.VerificationCommand;
+import de.hage.verification.command.subcommand.UICommand;
 import de.hage.verification.config.DatabaseConfig;
 import de.hage.verification.database.DatabaseType;
 import de.hage.verification.database.repository.VerificationHistoryRepository;
@@ -24,6 +25,9 @@ import de.hage.verification.database.repository.VerificationRepository;
 import de.hage.verification.database.repository.VerificationStatisticsRepository;
 import de.hage.verification.listener.AdvancementListener;
 import de.hage.verification.listener.LuckPermsRankListener;
+import de.hage.verification.milestone.MilestoneCheckTask;
+import de.hage.verification.milestone.MilestoneConfig;
+import de.hage.verification.milestone.MilestoneService;
 import de.hage.verification.service.EconomyService;
 import de.hage.verification.service.MessageService;
 import de.hage.verification.service.ProgressService;
@@ -55,6 +59,10 @@ public final class VerificationPlugin extends JavaPlugin {
     private ProgressService progressService;
     private HealthCheckTask healthCheckTask;
     private DatabaseConfig databaseConfig;
+    private MilestoneConfig milestoneConfig;
+    private MilestoneService milestoneService;
+    private MilestoneCheckTask milestoneCheckTask;
+    private UICommand uiCommand;
 
     private String defaultGroup;
     private String verifiedGroup;
@@ -166,6 +174,16 @@ public final class VerificationPlugin extends JavaPlugin {
             new LuckPermsRankListener(this, true).register();
         }
 
+        this.milestoneConfig = new MilestoneConfig(this);
+        if (milestoneConfig.isEnabled()) {
+            this.milestoneService = new MilestoneService(this, milestoneConfig, statisticsRepository);
+            this.milestoneCheckTask = new MilestoneCheckTask(this, milestoneService);
+            milestoneCheckTask.start(milestoneConfig.getCheckIntervalSeconds());
+            if (!milestoneConfig.getMilestones().isEmpty()) {
+                getLogger().info(milestoneConfig.getMilestones().size() + " Meilenstein(e) geladen.");
+            }
+        }
+
         validateGroups();
 
         if (getConfig().getBoolean("healthcheck.enabled", true)) {
@@ -174,6 +192,8 @@ public final class VerificationPlugin extends JavaPlugin {
         }
 
         getServer().getPluginManager().registerEvents(new VerificationUIListener(), this);
+
+        this.uiCommand = new UICommand(this);
 
         PluginCommand verificationCmd = getCommand("verification");
         if (verificationCmd != null) {
@@ -192,6 +212,9 @@ public final class VerificationPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (milestoneCheckTask != null) {
+            milestoneCheckTask.stop();
+        }
         if (healthCheckTask != null) {
             healthCheckTask.stop();
         }
@@ -468,7 +491,7 @@ public final class VerificationPlugin extends JavaPlugin {
     }
 
     private void loadConfigValues() {
-        defaultGroup = getConfig().getString("roles.default", "bettler");
+        defaultGroup = getConfig().getString("roles.default", "default");
         verifiedGroup = getConfig().getString("roles.verified", "i");
         verifiedDisplayName = getConfig().getString("display.verifiedRole", "I");
         historyEnabled = getConfig().getBoolean("history.enabled", true);
@@ -484,10 +507,12 @@ public final class VerificationPlugin extends JavaPlugin {
 
     private void validateGroups() {
         if (!vaultService.groupExists(defaultGroup)) {
-            getLogger().warning("Die LuckPerms-Gruppe '" + defaultGroup + "' existiert nicht.");
+            getLogger().warning("Die LuckPerms-Gruppe '" + defaultGroup
+                    + "' (roles.default) existiert nicht.");
         }
         if (!vaultService.groupExists(verifiedGroup)) {
-            getLogger().warning("Die LuckPerms-Gruppe '" + verifiedGroup + "' existiert nicht.");
+            getLogger().warning("Die LuckPerms-Gruppe '" + verifiedGroup
+                    + "' (roles.verified) existiert nicht.");
         }
     }
 
@@ -501,4 +526,6 @@ public final class VerificationPlugin extends JavaPlugin {
     public StatisticsService getStatisticsService() { return statisticsService; }
     public ProgressService getProgressService() { return progressService; }
     public EconomyService getEconomyService() { return economyService; }
+    public VaultService getVaultService() { return vaultService; }
+    public UICommand getUICommand() { return uiCommand; }
 }

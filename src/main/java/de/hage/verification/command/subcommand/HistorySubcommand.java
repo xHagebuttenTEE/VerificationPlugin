@@ -62,4 +62,14 @@ public final class HistorySubcommand implements Subcommand {
             return null;
         });
     }
+
+    @Override
+    public String getDescription() {
+        return "Zeigt die Verifizierungs-Historie eines Spielers";
+    }
+
+    @Override
+    public String getPermission() {
+        return "verification.history";
+    }
 }

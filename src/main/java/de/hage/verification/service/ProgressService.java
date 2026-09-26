@@ -13,6 +13,7 @@ public final class ProgressService {
     public static final String TYPE_ADVANCEMENT = "ADVANCEMENT";
     public static final String TYPE_RANK_UP = "RANK_UP";
     public static final String TYPE_RANK_DOWN = "RANK_DOWN";
+    public static final String TYPE_MILESTONE = "MILESTONE";
 
     private final VerificationPlugin plugin;
     private final VerificationProgressRepository repository;
@@ -41,6 +42,14 @@ public final class ProgressService {
                 });
     }
 
+    public CompletableFuture<Void> recordSync(UUID playerUUID, String playerName, String eventType,
+                                              String eventKey, String eventValue) {
+        if (!enabled) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return repository.insert(playerUUID, playerName, eventType, eventKey, eventValue);
+    }
+
     public CompletableFuture<List<VerificationProgressEntry>> getRecent(UUID playerUUID, int limit) {
         if (!enabled) {
             return CompletableFuture.completedFuture(List.of());
@@ -53,5 +62,12 @@ public final class ProgressService {
             return CompletableFuture.completedFuture(0);
         }
         return repository.countByType(playerUUID, eventType);
+    }
+
+    public CompletableFuture<Boolean> hasEntry(UUID playerUUID, String eventType, String eventKey) {
+        if (!enabled) {
+            return CompletableFuture.completedFuture(false);
+        }
+        return repository.existsByTypeAndKey(playerUUID, eventType, eventKey);
     }
 }

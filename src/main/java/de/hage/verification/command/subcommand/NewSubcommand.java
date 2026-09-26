@@ -56,4 +56,14 @@ public final class NewSubcommand implements Subcommand {
             return null;
         });
     }
+
+    @Override
+    public String getDescription() {
+        return "Verifiziert einen Spieler";
+    }
+
+    @Override
+    public String getPermission() {
+        return "verification.new";
+    }
 }

@@ -167,6 +167,10 @@ public final class VerificationService {
         return repository.findByVerificator(viewerUUID);
     }
 
+    public CompletableFuture<List<VerificationEntry>> getAllVerifiedPlayers() {
+        return repository.findAll();
+    }
+
     public String getRankOf(UUID playerUUID) {
         if (rankCache != null) {
             var cached = rankCache.get(playerUUID);
