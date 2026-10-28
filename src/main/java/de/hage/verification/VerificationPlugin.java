@@ -6,8 +6,12 @@ import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.logging.Level;
 
+import org.bukkit.Bukkit;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -19,6 +23,10 @@ import de.hage.verification.command.VerificationCommand;
 import de.hage.verification.command.subcommand.UICommand;
 import de.hage.verification.config.DatabaseConfig;
 import de.hage.verification.database.DatabaseType;
+import de.hage.verification.database.model.SupporterStats;
+import de.hage.verification.database.repository.AdvancedStatsRepository;
+import de.hage.verification.database.repository.LeaderboardRepository;
+import de.hage.verification.database.repository.SupporterStatsRepository;
 import de.hage.verification.database.repository.VerificationHistoryRepository;
 import de.hage.verification.database.repository.VerificationProgressRepository;
 import de.hage.verification.database.repository.VerificationRepository;
@@ -35,8 +43,10 @@ import de.hage.verification.service.StatisticsService;
 import de.hage.verification.service.VaultService;
 import de.hage.verification.service.VerificationService;
 import de.hage.verification.task.HealthCheckTask;
+import de.hage.verification.ui.StatsUIListener;
 import de.hage.verification.ui.VerificationUIListener;
 import de.hage.verification.util.AsyncExecutor;
+import de.hage.verification.util.PlayerUtil;
 import net.milkbowl.vault.permission.Permission;
 
 public final class VerificationPlugin extends JavaPlugin {
@@ -51,6 +61,9 @@ public final class VerificationPlugin extends JavaPlugin {
     private VerificationHistoryRepository historyRepository;
     private VerificationStatisticsRepository statisticsRepository;
     private VerificationProgressRepository progressRepository;
+    private SupporterStatsRepository supporterStatsRepository;
+    private LeaderboardRepository leaderboardRepository;
+    private AdvancedStatsRepository advancedStatsRepository;
     private VaultService vaultService;
     private MessageService messageService;
     private EconomyService economyService;
@@ -63,6 +76,8 @@ public final class VerificationPlugin extends JavaPlugin {
     private MilestoneService milestoneService;
     private MilestoneCheckTask milestoneCheckTask;
     private UICommand uiCommand;
+
+    private volatile List<String> cachedSupporterNames = Collections.emptyList();
 
     private String defaultGroup;
     private String verifiedGroup;
@@ -145,11 +160,18 @@ public final class VerificationPlugin extends JavaPlugin {
             }
         }
 
+        if (!createViews()) {
+            getLogger().warning("Views konnten nicht erstellt werden. Statistik-UIs sind möglicherweise eingeschränkt.");
+        }
+
         this.asyncExecutor = new AsyncExecutor(this);
         this.repository = new VerificationRepository(dataSource, asyncExecutor, tableName, databaseType);
         this.historyRepository = new VerificationHistoryRepository(dataSource, asyncExecutor);
         this.statisticsRepository = new VerificationStatisticsRepository(dataSource, asyncExecutor, databaseType);
         this.progressRepository = new VerificationProgressRepository(dataSource, asyncExecutor);
+        this.supporterStatsRepository = new SupporterStatsRepository(dataSource, asyncExecutor);
+        this.leaderboardRepository = new LeaderboardRepository(dataSource, asyncExecutor);
+        this.advancedStatsRepository = new AdvancedStatsRepository(dataSource, asyncExecutor, databaseType);
         this.vaultService = new VaultService();
         this.messageService = new MessageService(this);
         this.economyService = new EconomyService();
@@ -192,6 +214,7 @@ public final class VerificationPlugin extends JavaPlugin {
         }
 
         getServer().getPluginManager().registerEvents(new VerificationUIListener(), this);
+        getServer().getPluginManager().registerEvents(new StatsUIListener(), this);
 
         this.uiCommand = new UICommand(this);
 
@@ -206,24 +229,37 @@ public final class VerificationPlugin extends JavaPlugin {
             return;
         }
 
+        refreshSupporterNameCache();
+        Bukkit.getScheduler().runTaskTimerAsynchronously(this, this::refreshSupporterNameCache, 1200L, 1200L);
+
         getLogger().info("VerificationPlugin erfolgreich aktiviert (Datenbank: "
                 + databaseType.name() + ").");
     }
 
     @Override
     public void onDisable() {
-        if (milestoneCheckTask != null) {
-            milestoneCheckTask.stop();
-        }
-        if (healthCheckTask != null) {
-            healthCheckTask.stop();
-        }
-        if (statisticsService != null) {
-            statisticsService.stop();
-        }
-        if (dataSource != null && !dataSource.isClosed()) {
-            dataSource.close();
-        }
+        if (milestoneCheckTask != null) milestoneCheckTask.stop();
+        if (healthCheckTask != null) healthCheckTask.stop();
+        if (statisticsService != null) statisticsService.stop();
+        if (dataSource != null && !dataSource.isClosed()) dataSource.close();
+    }
+
+    private void refreshSupporterNameCache() {
+        supporterStatsRepository.findAll().thenAccept(list -> {
+            List<String> names = new ArrayList<>();
+            for (SupporterStats s : list) {
+                String name = PlayerUtil.getPlayerName(s.getSupporterUuid());
+                if (name != null && !name.isEmpty()) names.add(name);
+            }
+            cachedSupporterNames = Collections.unmodifiableList(names);
+        }).exceptionally(ex -> {
+            getLogger().log(Level.WARNING, "Fehler beim Aktualisieren des Supporter-Namen-Caches", ex);
+            return null;
+        });
+    }
+
+    public List<String> getCachedSupporterNames() {
+        return cachedSupporterNames;
     }
 
     private boolean setupVault() {
@@ -236,9 +272,7 @@ public final class VerificationPlugin extends JavaPlugin {
 
     private boolean setupDatabase() {
         tableName = databaseConfig.getTable();
-
         String typeStr = databaseConfig.getType();
-
         if (typeStr.equals("sqlite")) {
             databaseType = DatabaseType.SQLITE;
         } else if (typeStr.equals("mariadb") || typeStr.equals("mysql")) {
@@ -246,11 +280,7 @@ public final class VerificationPlugin extends JavaPlugin {
         } else {
             databaseType = databaseConfig.hasCredentials() ? DatabaseType.MARIADB : DatabaseType.SQLITE;
         }
-
-        if (databaseType == DatabaseType.SQLITE) {
-            return setupSqlite();
-        }
-        return setupMariaDb();
+        return databaseType == DatabaseType.SQLITE ? setupSqlite() : setupMariaDb();
     }
 
     private boolean setupSqlite() {
@@ -261,7 +291,6 @@ public final class VerificationPlugin extends JavaPlugin {
             getLogger().severe("Plugin-Datenordner konnte nicht erstellt werden.");
             return false;
         }
-
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl("jdbc:sqlite:" + dbFile.getAbsolutePath());
         config.setDriverClassName("org.sqlite.JDBC");
@@ -270,10 +299,9 @@ public final class VerificationPlugin extends JavaPlugin {
         config.setConnectionTimeout(30000);
         config.setConnectionTestQuery("SELECT 1");
         config.setConnectionInitSql("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;");
-
         try {
             dataSource = new HikariDataSource(config);
-            try (Connection conn = dataSource.getConnection()) {
+            try (Connection ignored = dataSource.getConnection()) {
                 getLogger().info("SQLite-Datenbankverbindung hergestellt (" + filename + ").");
             }
             return true;
@@ -284,24 +312,18 @@ public final class VerificationPlugin extends JavaPlugin {
     }
 
     private boolean setupMariaDb() {
-        String host = databaseConfig.getHost();
-        int port = databaseConfig.getPort();
-        String database = databaseConfig.getName();
-        String user = databaseConfig.getUser();
-        String password = databaseConfig.getPassword();
-
         HikariConfig config = new HikariConfig();
-        config.setJdbcUrl("jdbc:mariadb://" + host + ":" + port + "/" + database);
-        config.setUsername(user);
-        config.setPassword(password);
+        config.setJdbcUrl("jdbc:mariadb://" + databaseConfig.getHost() + ":" + databaseConfig.getPort()
+                + "/" + databaseConfig.getName());
+        config.setUsername(databaseConfig.getUser());
+        config.setPassword(databaseConfig.getPassword());
         config.setMaximumPoolSize(databaseConfig.getMaxPoolSize());
         config.setMinimumIdle(databaseConfig.getMinIdle());
         config.setConnectionTimeout(databaseConfig.getConnectionTimeout());
         config.setDriverClassName("org.mariadb.jdbc.Driver");
-
         try {
             dataSource = new HikariDataSource(config);
-            try (Connection conn = dataSource.getConnection()) {
+            try (Connection ignored = dataSource.getConnection()) {
                 getLogger().info("MariaDB-Datenbankverbindung hergestellt.");
             }
             return true;
@@ -337,94 +359,80 @@ public final class VerificationPlugin extends JavaPlugin {
         }
     }
 
+    private boolean createViews() {
+        String supporterViewSql;
+        String leaderboardViewSql;
+        if (databaseType == DatabaseType.SQLITE) {
+            supporterViewSql = "CREATE VIEW v_supporter_stats AS "
+                    + "SELECT verificator AS supporter_uuid, COUNT(*) AS total_verifications, "
+                    + "MIN(verification_time) AS first_verification, "
+                    + "MAX(verification_time) AS last_verification, "
+                    + "SUM(CASE WHEN strftime('%Y-%m', verification_time) = strftime('%Y-%m','now') THEN 1 ELSE 0 END) AS monthly_verifications "
+                    + "FROM " + tableName + " WHERE verificator IS NOT NULL GROUP BY verificator";
+            leaderboardViewSql = "CREATE VIEW v_monthly_leaderboard AS "
+                    + "SELECT strftime('%Y-%m', verification_time) AS `year_month`, "
+                    + "verificator AS supporter_uuid, COUNT(*) AS verifications "
+                    + "FROM " + tableName + " WHERE verificator IS NOT NULL "
+                    + "GROUP BY strftime('%Y-%m', verification_time), verificator";
+        } else {
+            supporterViewSql = "CREATE VIEW v_supporter_stats AS "
+                    + "SELECT verificator AS supporter_uuid, COUNT(*) AS total_verifications, "
+                    + "MIN(verification_time) AS first_verification, "
+                    + "MAX(verification_time) AS last_verification, "
+                    + "SUM(CASE WHEN YEAR(verification_time)=YEAR(NOW()) AND MONTH(verification_time)=MONTH(NOW()) THEN 1 ELSE 0 END) AS monthly_verifications "
+                    + "FROM " + tableName + " WHERE verificator IS NOT NULL GROUP BY verificator";
+            leaderboardViewSql = "CREATE VIEW v_monthly_leaderboard AS "
+                    + "SELECT DATE_FORMAT(verification_time,'%Y-%m') AS `year_month`, "
+                    + "verificator AS supporter_uuid, COUNT(*) AS verifications "
+                    + "FROM " + tableName + " WHERE verificator IS NOT NULL "
+                    + "GROUP BY DATE_FORMAT(verification_time,'%Y-%m'), verificator";
+        }
+        try (Connection conn = dataSource.getConnection(); Statement stmt = conn.createStatement()) {
+            stmt.execute("DROP VIEW IF EXISTS v_supporter_stats");
+            stmt.execute("DROP VIEW IF EXISTS v_monthly_leaderboard");
+            stmt.execute(supporterViewSql);
+            stmt.execute(leaderboardViewSql);
+            return true;
+        } catch (SQLException e) {
+            getLogger().log(Level.SEVERE, "Fehler beim Erstellen der Views.", e);
+            return false;
+        }
+    }
+
     private boolean createSqliteTables() {
         String[] statements = {
-            "CREATE TABLE IF NOT EXISTS " + tableName + " ("
-                + "verified_player VARCHAR(36) PRIMARY KEY, "
-                + "verificator VARCHAR(36), "
-                + "verification_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-                + ")",
-            "CREATE TABLE IF NOT EXISTS " + VerificationHistoryRepository.TABLE_NAME + " ("
-                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                + "player_uuid VARCHAR(36) NOT NULL, "
-                + "player_name VARCHAR(32) NOT NULL, "
-                + "actor_uuid VARCHAR(36), "
-                + "actor_name VARCHAR(32), "
-                + "action VARCHAR(32) NOT NULL, "
-                + "details VARCHAR(255), "
-                + "timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-                + ")",
-            "CREATE INDEX IF NOT EXISTS idx_history_player_uuid ON "
-                + VerificationHistoryRepository.TABLE_NAME + "(player_uuid)",
-            "CREATE INDEX IF NOT EXISTS idx_history_timestamp ON "
-                + VerificationHistoryRepository.TABLE_NAME + "(timestamp)",
-            "CREATE TABLE IF NOT EXISTS " + VerificationStatisticsRepository.TABLE_NAME + " ("
-                + "player_uuid VARCHAR(36) PRIMARY KEY, "
-                + "player_name VARCHAR(32) NOT NULL, "
-                + "total_playtime_seconds INTEGER NOT NULL DEFAULT 0, "
-                + "current_balance NUMERIC NOT NULL DEFAULT 0, "
-                + "highest_balance NUMERIC NOT NULL DEFAULT 0, "
-                + "cumulative_earned NUMERIC NOT NULL DEFAULT 0, "
-                + "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-                + ")",
-            "CREATE TABLE IF NOT EXISTS " + VerificationProgressRepository.TABLE_NAME + " ("
-                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                + "player_uuid VARCHAR(36) NOT NULL, "
-                + "player_name VARCHAR(32) NOT NULL, "
-                + "event_type VARCHAR(32) NOT NULL, "
-                + "event_key VARCHAR(128), "
-                + "event_value TEXT, "
-                + "timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-                + ")",
-            "CREATE INDEX IF NOT EXISTS idx_progress_player ON "
-                + VerificationProgressRepository.TABLE_NAME + "(player_uuid)",
-            "CREATE INDEX IF NOT EXISTS idx_progress_type ON "
-                + VerificationProgressRepository.TABLE_NAME + "(event_type)",
-            "CREATE INDEX IF NOT EXISTS idx_progress_time ON "
-                + VerificationProgressRepository.TABLE_NAME + "(timestamp)"
+            "CREATE TABLE IF NOT EXISTS " + tableName + " (verified_player VARCHAR(36) PRIMARY KEY, verificator VARCHAR(36), verification_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE IF NOT EXISTS " + VerificationHistoryRepository.TABLE_NAME + " (id INTEGER PRIMARY KEY AUTOINCREMENT, player_uuid VARCHAR(36) NOT NULL, player_name VARCHAR(32) NOT NULL, actor_uuid VARCHAR(36), actor_name VARCHAR(32), action VARCHAR(32) NOT NULL, details VARCHAR(255), timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE INDEX IF NOT EXISTS idx_history_player_uuid ON " + VerificationHistoryRepository.TABLE_NAME + "(player_uuid)",
+            "CREATE INDEX IF NOT EXISTS idx_history_timestamp ON " + VerificationHistoryRepository.TABLE_NAME + "(timestamp)",
+            "CREATE TABLE IF NOT EXISTS " + VerificationStatisticsRepository.TABLE_NAME + " (player_uuid VARCHAR(36) PRIMARY KEY, player_name VARCHAR(32) NOT NULL, total_playtime_seconds INTEGER NOT NULL DEFAULT 0, current_balance NUMERIC NOT NULL DEFAULT 0, highest_balance NUMERIC NOT NULL DEFAULT 0, cumulative_earned NUMERIC NOT NULL DEFAULT 0, last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE IF NOT EXISTS " + VerificationProgressRepository.TABLE_NAME + " (id INTEGER PRIMARY KEY AUTOINCREMENT, player_uuid VARCHAR(36) NOT NULL, player_name VARCHAR(32) NOT NULL, event_type VARCHAR(32) NOT NULL, event_key VARCHAR(128), event_value TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE INDEX IF NOT EXISTS idx_progress_player ON " + VerificationProgressRepository.TABLE_NAME + "(player_uuid)",
+            "CREATE INDEX IF NOT EXISTS idx_progress_type ON " + VerificationProgressRepository.TABLE_NAME + "(event_type)",
+            "CREATE INDEX IF NOT EXISTS idx_progress_time ON " + VerificationProgressRepository.TABLE_NAME + "(timestamp)"
         };
-
-        try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement()) {
-            for (String sql : statements) {
-                stmt.execute(sql);
-            }
+        try (Connection conn = dataSource.getConnection(); Statement stmt = conn.createStatement()) {
+            for (String sql : statements) stmt.execute(sql);
         } catch (SQLException e) {
             getLogger().log(Level.SEVERE, "Fehler beim Anlegen der SQLite-Tabellen.", e);
             return false;
         }
-
-        try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement()) {
+        try (Connection conn = dataSource.getConnection(); Statement stmt = conn.createStatement()) {
             stmt.execute("ALTER TABLE " + VerificationStatisticsRepository.TABLE_NAME
                     + " ADD COLUMN cumulative_earned NUMERIC NOT NULL DEFAULT 0");
         } catch (SQLException e) {
             String msg = e.getMessage();
             if (msg == null || !msg.toLowerCase().contains("duplicate column")) {
-                getLogger().log(Level.SEVERE,
-                        "Fehler beim Hinzufügen der Spalte 'cumulative_earned'.", e);
+                getLogger().log(Level.SEVERE, "Fehler beim Hinzufügen der Spalte 'cumulative_earned'.", e);
                 return false;
             }
         }
-
         return true;
     }
 
     private boolean createHistoryTable() {
-        String sql = "CREATE TABLE IF NOT EXISTS " + VerificationHistoryRepository.TABLE_NAME + " ("
-                + "id BIGINT AUTO_INCREMENT PRIMARY KEY, "
-                + "player_uuid VARCHAR(36) NOT NULL, "
-                + "player_name VARCHAR(32) NOT NULL, "
-                + "actor_uuid VARCHAR(36), "
-                + "actor_name VARCHAR(32), "
-                + "action VARCHAR(32) NOT NULL, "
-                + "details VARCHAR(255), "
-                + "timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
-                + "INDEX idx_player_uuid (player_uuid), "
-                + "INDEX idx_timestamp (timestamp)"
-                + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
-        try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement()) {
+        String sql = "CREATE TABLE IF NOT EXISTS " + VerificationHistoryRepository.TABLE_NAME + " (id BIGINT AUTO_INCREMENT PRIMARY KEY, player_uuid VARCHAR(36) NOT NULL, player_name VARCHAR(32) NOT NULL, actor_uuid VARCHAR(36), actor_name VARCHAR(32), action VARCHAR(32) NOT NULL, details VARCHAR(255), timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX idx_player_uuid (player_uuid), INDEX idx_timestamp (timestamp)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+        try (Connection conn = dataSource.getConnection(); Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
             return true;
         } catch (SQLException e) {
@@ -434,18 +442,8 @@ public final class VerificationPlugin extends JavaPlugin {
     }
 
     private boolean createStatisticsTable() {
-        String sql = "CREATE TABLE IF NOT EXISTS " + VerificationStatisticsRepository.TABLE_NAME + " ("
-                + "player_uuid VARCHAR(36) PRIMARY KEY, "
-                + "player_name VARCHAR(32) NOT NULL, "
-                + "total_playtime_seconds BIGINT NOT NULL DEFAULT 0, "
-                + "current_balance DECIMAL(15,2) NOT NULL DEFAULT 0.00, "
-                + "highest_balance DECIMAL(15,2) NOT NULL DEFAULT 0.00, "
-                + "cumulative_earned DECIMAL(15,2) NOT NULL DEFAULT 0.00, "
-                + "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, "
-                + "INDEX idx_last_updated (last_updated)"
-                + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
-        try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement()) {
+        String sql = "CREATE TABLE IF NOT EXISTS " + VerificationStatisticsRepository.TABLE_NAME + " (player_uuid VARCHAR(36) PRIMARY KEY, player_name VARCHAR(32) NOT NULL, total_playtime_seconds BIGINT NOT NULL DEFAULT 0, current_balance DECIMAL(15,2) NOT NULL DEFAULT 0.00, highest_balance DECIMAL(15,2) NOT NULL DEFAULT 0.00, cumulative_earned DECIMAL(15,2) NOT NULL DEFAULT 0.00, last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX idx_last_updated (last_updated)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+        try (Connection conn = dataSource.getConnection(); Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
             return true;
         } catch (SQLException e) {
@@ -455,20 +453,8 @@ public final class VerificationPlugin extends JavaPlugin {
     }
 
     private boolean createProgressTable() {
-        String sql = "CREATE TABLE IF NOT EXISTS " + VerificationProgressRepository.TABLE_NAME + " ("
-                + "id BIGINT AUTO_INCREMENT PRIMARY KEY, "
-                + "player_uuid VARCHAR(36) NOT NULL, "
-                + "player_name VARCHAR(32) NOT NULL, "
-                + "event_type VARCHAR(32) NOT NULL, "
-                + "event_key VARCHAR(128), "
-                + "event_value TEXT, "
-                + "timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
-                + "INDEX idx_progress_player (player_uuid), "
-                + "INDEX idx_progress_type (event_type), "
-                + "INDEX idx_progress_time (timestamp)"
-                + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
-        try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement()) {
+        String sql = "CREATE TABLE IF NOT EXISTS " + VerificationProgressRepository.TABLE_NAME + " (id BIGINT AUTO_INCREMENT PRIMARY KEY, player_uuid VARCHAR(36) NOT NULL, player_name VARCHAR(32) NOT NULL, event_type VARCHAR(32) NOT NULL, event_key VARCHAR(128), event_value TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX idx_progress_player (player_uuid), INDEX idx_progress_type (event_type), INDEX idx_progress_time (timestamp)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+        try (Connection conn = dataSource.getConnection(); Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
             return true;
         } catch (SQLException e) {
@@ -480,8 +466,7 @@ public final class VerificationPlugin extends JavaPlugin {
     private boolean addCumulativeEarnedColumnMariaDb() {
         String sql = "ALTER TABLE " + VerificationStatisticsRepository.TABLE_NAME
                 + " ADD COLUMN cumulative_earned DECIMAL(15,2) NOT NULL DEFAULT 0.00";
-        try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement()) {
+        try (Connection conn = dataSource.getConnection(); Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
             return true;
         } catch (SQLException e) {
@@ -507,12 +492,10 @@ public final class VerificationPlugin extends JavaPlugin {
 
     private void validateGroups() {
         if (!vaultService.groupExists(defaultGroup)) {
-            getLogger().warning("Die LuckPerms-Gruppe '" + defaultGroup
-                    + "' (roles.default) existiert nicht.");
+            getLogger().warning("Die LuckPerms-Gruppe '" + defaultGroup + "' (roles.default) existiert nicht.");
         }
         if (!vaultService.groupExists(verifiedGroup)) {
-            getLogger().warning("Die LuckPerms-Gruppe '" + verifiedGroup
-                    + "' (roles.verified) existiert nicht.");
+            getLogger().warning("Die LuckPerms-Gruppe '" + verifiedGroup + "' (roles.verified) existiert nicht.");
         }
     }
 
@@ -528,4 +511,7 @@ public final class VerificationPlugin extends JavaPlugin {
     public EconomyService getEconomyService() { return economyService; }
     public VaultService getVaultService() { return vaultService; }
     public UICommand getUICommand() { return uiCommand; }
+    public SupporterStatsRepository getSupporterStatsRepository() { return supporterStatsRepository; }
+    public LeaderboardRepository getLeaderboardRepository() { return leaderboardRepository; }
+    public AdvancedStatsRepository getAdvancedStatsRepository() { return advancedStatsRepository; }
 }

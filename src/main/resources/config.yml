@@ -29,6 +29,13 @@ statistics:
   track-balance: true
   track-cumulative-earned: true
 
+advanced-stats:
+  enabled: true
+  identifiers:
+    - MOB_KILLS
+    - PLAY_ONE_MINUTE
+    - WALK_ONE_CM
+
 cache:
   info-ttl-seconds: 30
 

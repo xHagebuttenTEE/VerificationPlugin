@@ -58,15 +58,11 @@ public final class VerificationService {
 
     public CompletableFuture<Boolean> verifyPlayer(UUID playerUUID, UUID verificatorUUID) {
         return repository.exists(playerUUID).thenComposeAsync(exists -> {
-            if (exists) {
-                return CompletableFuture.completedFuture(false);
-            }
+            if (exists) return CompletableFuture.completedFuture(false);
             OfflinePlayer player = Bukkit.getOfflinePlayer(playerUUID);
             return repository.insertIfAbsent(playerUUID, verificatorUUID)
                 .thenComposeAsync(inserted -> {
-                    if (!inserted) {
-                        return CompletableFuture.completedFuture(false);
-                    }
+                    if (!inserted) return CompletableFuture.completedFuture(false);
                     return applyLuckPermsChange(player, playerUUID, verificatorUUID)
                             .thenApplyAsync(v -> {
                                 if (infoCache != null) infoCache.invalidate(playerUUID);
@@ -109,12 +105,40 @@ public final class VerificationService {
         return CompletableFuture.completedFuture(null);
     }
 
+    public CompletableFuture<Boolean> updateVerificator(UUID playerUUID, UUID newVerificator, UUID actorUUID) {
+        return repository.updateVerificator(playerUUID, newVerificator).thenComposeAsync(updated -> {
+            if (!updated) return CompletableFuture.completedFuture(false);
+            if (infoCache != null) infoCache.invalidate(playerUUID);
+            if (rankCache != null) rankCache.invalidate(playerUUID);
+
+            String newName = PlayerUtil.getPlayerName(newVerificator);
+            plugin.getLogger().info("Verifizierer für " + playerUUID + " wurde auf "
+                    + (newName != null ? newName : newVerificator.toString())
+                    + " gesetzt (durch " + (actorUUID != null ? actorUUID : "CONSOLE") + ").");
+
+            if (historyEnabled) {
+                String actorName = (actorUUID != null) ? PlayerUtil.getPlayerName(actorUUID) : "CONSOLE";
+                if (actorName == null) actorName = "CONSOLE";
+                String playerName = PlayerUtil.getPlayerName(playerUUID);
+                if (playerName == null) playerName = playerUUID.toString();
+                String details = "Neuer Supporter: " + (newName != null ? newName : newVerificator.toString());
+                return historyRepository.insert(playerUUID, playerName,
+                        actorUUID, actorName, "SUPPORTER_SET", details)
+                        .thenApplyAsync(v -> true)
+                        .exceptionally(ex -> {
+                            plugin.getLogger().log(Level.WARNING,
+                                    "History-Eintrag konnte nicht geschrieben werden.", ex);
+                            return true;
+                        });
+            }
+            return CompletableFuture.completedFuture(true);
+        });
+    }
+
     public CompletableFuture<VerificationInfo> getVerificationInfo(UUID playerUUID) {
         if (infoCache != null) {
             var cached = infoCache.get(playerUUID);
-            if (cached.isPresent()) {
-                return CompletableFuture.completedFuture(cached.get());
-            }
+            if (cached.isPresent()) return CompletableFuture.completedFuture(cached.get());
         }
         return repository.findByPlayer(playerUUID).thenComposeAsync(entry -> {
             if (entry == null) {
@@ -161,9 +185,7 @@ public final class VerificationService {
     }
 
     public CompletableFuture<List<VerificationEntry>> getPlayersForUI(UUID viewerUUID, boolean showAll) {
-        if (showAll) {
-            return repository.findAll();
-        }
+        if (showAll) return repository.findAll();
         return repository.findByVerificator(viewerUUID);
     }
 
@@ -171,19 +193,19 @@ public final class VerificationService {
         return repository.findAll();
     }
 
+    public CompletableFuture<List<VerificationEntry>> getPlayersVerifiedBy(UUID verificatorUuid) {
+        return repository.findByVerificator(verificatorUuid);
+    }
+
     public String getRankOf(UUID playerUUID) {
         if (rankCache != null) {
             var cached = rankCache.get(playerUUID);
-            if (cached.isPresent()) {
-                return cached.get();
-            }
+            if (cached.isPresent()) return cached.get();
         }
         try {
             OfflinePlayer player = Bukkit.getOfflinePlayer(playerUUID);
             String rank = vaultService.getPrimaryGroup(player);
-            if (rank != null && rankCache != null) {
-                rankCache.put(playerUUID, rank);
-            }
+            if (rank != null && rankCache != null) rankCache.put(playerUUID, rank);
             return rank;
         } catch (Exception e) {
             return null;
@@ -195,13 +217,8 @@ public final class VerificationService {
         return DATE_FORMAT.format(timestamp.toInstant());
     }
 
-    public String getVerifiedDisplayName() {
-        return verifiedDisplayName;
-    }
-
-    public boolean isHistoryEnabled() {
-        return historyEnabled;
-    }
+    public String getVerifiedDisplayName() { return verifiedDisplayName; }
+    public boolean isHistoryEnabled() { return historyEnabled; }
 
     public static final class VerificationInfo {
         private final boolean verified;

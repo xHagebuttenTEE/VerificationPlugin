@@ -16,7 +16,7 @@ public final class HistorySubcommand implements Subcommand {
 
     @Override
     public void execute(CommandSender sender, String targetName) {
-        if (!sender.hasPermission("verification.history")) {
+        if (!sender.hasPermission("verification.info")) {
             sender.sendMessage(plugin.getMessageService().getMessage("command.noPermission"));
             return;
         }
@@ -70,6 +70,6 @@ public final class HistorySubcommand implements Subcommand {
 
     @Override
     public String getPermission() {
-        return "verification.history";
+        return "verification.info";
     }
 }

@@ -67,6 +67,20 @@ public final class VerificationRepository {
         });
     }
 
+    public CompletableFuture<Boolean> updateVerificator(UUID playerUUID, UUID newVerificator) {
+        return asyncExecutor.supplyAsync(() -> {
+            String sql = "UPDATE " + tableName + " SET verificator = ? WHERE verified_player = ?";
+            try (Connection conn = dataSource.getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setString(1, newVerificator.toString());
+                stmt.setString(2, playerUUID.toString());
+                return stmt.executeUpdate() > 0;
+            } catch (SQLException e) {
+                throw new RuntimeException("Fehler beim Aktualisieren des Verifizierers für " + playerUUID, e);
+            }
+        });
+    }
+
     public CompletableFuture<Void> delete(UUID playerUUID) {
         return asyncExecutor.runAsync(() -> {
             String sql = "DELETE FROM " + tableName + " WHERE verified_player = ?";
@@ -88,9 +102,7 @@ public final class VerificationRepository {
                  PreparedStatement stmt = conn.prepareStatement(sql)) {
                 stmt.setString(1, playerUUID.toString());
                 try (ResultSet rs = stmt.executeQuery()) {
-                    if (rs.next()) {
-                        return mapRow(rs);
-                    }
+                    if (rs.next()) return mapRow(rs);
                     return null;
                 }
             } catch (SQLException e) {
@@ -107,9 +119,7 @@ public final class VerificationRepository {
             try (Connection conn = dataSource.getConnection();
                  PreparedStatement stmt = conn.prepareStatement(sql);
                  ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    result.add(mapRow(rs));
-                }
+                while (rs.next()) result.add(mapRow(rs));
             } catch (SQLException e) {
                 throw new RuntimeException("Fehler beim Laden aller Verifizierungen", e);
             }
@@ -126,9 +136,7 @@ public final class VerificationRepository {
                  PreparedStatement stmt = conn.prepareStatement(sql)) {
                 stmt.setString(1, verificatorUUID.toString());
                 try (ResultSet rs = stmt.executeQuery()) {
-                    while (rs.next()) {
-                        result.add(mapRow(rs));
-                    }
+                    while (rs.next()) result.add(mapRow(rs));
                 }
             } catch (SQLException e) {
                 throw new RuntimeException("Fehler beim Laden der Verifizierungen für " + verificatorUUID, e);

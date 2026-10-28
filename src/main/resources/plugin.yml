@@ -10,7 +10,7 @@ softdepend:
 commands:
   verification:
     description: Verifiziert Spieler und zeigt Verifizierungsinformationen
-    usage: /verification <new|info|history|ui|resetmessages|resetconfig|resetdatabase> [Spieler]
+    usage: /verification <new|info|history|ui|stats|leaderboard|resetmessages|resetconfig|resetdatabase> [Spieler]
     aliases: [verify]
 
 permissions:
@@ -18,23 +18,8 @@ permissions:
     description: Darf Spieler verifizieren
     default: op
   verification.info:
-    description: Darf Verifizierungsinformationen anzeigen
+    description: Darf Verifizierungsinfos, Historie, UI, Statistiken und Ranglisten einsehen
     default: op
-  verification.history:
-    description: Darf die Verifizierungs-Historie anzeigen
-    default: op
-  verification.ui:
-    description: Darf das Verifizierungs-UI öffnen
-    default: op
-  verification.ui.all:
-    description: Darf im UI alle verifizierten Spieler sehen
-    default: op
-  verification.resetmessages:
-    description: Darf die messages.yml mit der JAR-Version überschreiben
-    default: op
-  verification.resetconfig:
-    description: Darf die config.yml mit der JAR-Version überschreiben
-    default: op
-  verification.resetdatabase:
-    description: Darf die database.yml mit der JAR-Version überschreiben
+  verification.admin:
+    description: Darf Konfigurationsdateien zurücksetzen
     default: op

@@ -40,7 +40,22 @@ public final class LuckPermsRankListener {
 
         User user = event.getUser();
         UUID uuid = user.getUniqueId();
-        String currentGroup = user.getPrimaryGroup();
+
+        String currentGroup;
+        try {
+            currentGroup = user.getPrimaryGroup();
+        } catch (NullPointerException e) {
+            if (plugin.getConfig().getBoolean("debug", false)) {
+                plugin.getLogger().log(Level.FINE,
+                        "Primäre Gruppe für " + uuid + " ist null, überspringe Event.", e);
+            }
+            return;
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING,
+                    "Fehler beim Auslesen der primären Gruppe für " + uuid, e);
+            return;
+        }
+
         if (currentGroup == null || currentGroup.isEmpty()) return;
 
         String previousGroup = lastKnownGroup.put(uuid, currentGroup);

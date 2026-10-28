@@ -79,9 +79,7 @@ public final class StatisticsService implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
         SessionInfo info = sessions.remove(uuid);
-        if (info == null) {
-            return;
-        }
+        if (info == null) return;
         if (trackPlaytime) {
             long seconds = (System.currentTimeMillis() - info.startTime) / 1000;
             if (seconds > 0) {
